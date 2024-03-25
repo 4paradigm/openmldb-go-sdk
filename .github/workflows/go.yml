@@ -14,13 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: '^1.18'
 
       - name: OpenMLDB cluster
         run: |
           docker compose -f docker-compose.yml up -d
+
+      - name: verbose services
+        # ensure all services is up
+        run: |
+          sleep 60
+          docker compose --file docker-compose.yml ps -a
 
       - name: init test database
         run: |
