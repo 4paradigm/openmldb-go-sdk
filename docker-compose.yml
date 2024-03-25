@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  openmldb-api:
+    image: ghcr.io/aceforeverd/openmldb-server:${OPENMLDB_VERSION}
+    command:
+      - "--role=apiserver"
+      - "--endpoint=openmldb-api:9527"
+      - "--zk_cluster=openmldb-zk:2181"
+      - "--zk_root_path=/openmldb"
+    ports:
+      # API Server Port should public
+      - 9527:9527
+    restart: on-failure
+    depends_on:
+      - openmldb-ns1
+      - openmldb-ns2
+
+  openmldb-zk:
+    image: zookeeper:3.4.14
+    ports:
+      - 2181
+
+  openmldb-ns1:
+    image: ghcr.io/aceforeverd/openmldb-server:${OPENMLDB_VERSION}
+    command:
+      - "--role=nameserver"
+      - "--endpoint=openmldb-ns1:9527"
+      - "--zk_cluster=openmldb-zk:2181"
+      - "--zk_root_path=/openmldb"
+    restart: on-failure
+    depends_on:
+      - openmldb-ns2
+      - openmldb-tablet1
+      - openmldb-tablet2
+      - openmldb-tablet3
+
+  openmldb-ns2:
+    image: ghcr.io/aceforeverd/openmldb-server:${OPENMLDB_VERSION}
+    command:
+      - "--role=nameserver"
+      - "--endpoint=openmldb-ns2:9527"
+      - "--zk_cluster=openmldb-zk:2181"
+      - "--zk_root_path=/openmldb"
+    restart: on-failure
+    depends_on:
+      - openmldb-tablet1
+      - openmldb-tablet2
+      - openmldb-tablet3
+
+  openmldb-tablet1:
+    image: ghcr.io/aceforeverd/openmldb-server:${OPENMLDB_VERSION}
+    command:
+      - "--role=tablet"
+      - "--endpoint=openmldb-tablet1:9527"
+      - "--zk_cluster=openmldb-zk:2181"
+      - "--zk_root_path=/openmldb"
+    depends_on:
+      - openmldb-zk
+      - openmldb-tablet2
+
+  openmldb-tablet2:
+    image: ghcr.io/aceforeverd/openmldb-server:${OPENMLDB_VERSION}
+    command:
+      - "--role=tablet"
+      - "--endpoint=openmldb-tablet2:9527"
+      - "--zk_cluster=openmldb-zk:2181"
+      - "--zk_root_path=/openmldb"
+    depends_on:
+      - openmldb-zk
+      - openmldb-tablet3
+
+  openmldb-tablet3:
+    image: ghcr.io/aceforeverd/openmldb-server:${OPENMLDB_VERSION}
+    command:
+      - "--role=tablet"
+      - "--endpoint=openmldb-tablet3:9527"
+      - "--zk_cluster=openmldb-zk:2181"
+      - "--zk_root_path=/openmldb"
+    depends_on:
+      - openmldb-zk

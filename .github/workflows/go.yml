@@ -1,0 +1,41 @@
+# This workflow runs SDK related jobs for OpenMLDB
+name: SDK
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  go-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '^1.18'
+
+      - name: OpenMLDB cluster
+        run: |
+          docker compose -f docker-compose.yml up -d
+
+      - name: init test database
+        run: |
+          docker compose -f docker-compose.yml exec openmldb-ns1 /opt/openmldb/bin/openmldb --zk_cluster=openmldb-zk:2181 --zk_root_path=/openmldb --role=sql_client --cmd 'CREATE DATABASE test_db'
+          docker compose -f docker-compose.yml exec openmldb-ns1 /opt/openmldb/bin/openmldb --zk_cluster=openmldb-zk:2181 --zk_root_path=/openmldb --role=sql_client --cmd 'SET GLOBAL execute_mode = "online"'
+
+      - name: go test
+        env:
+          OPENMLDB_APISERVER_HOST: 127.0.0.1
+          OPENMLDB_APISERVER_PORT: 9527
+        run: go test ./... -race -covermode=atomic -coverprofile=coverage.out
+
+      - name: Coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: go/coverage.out
+          fail_ci_if_error: true
+          verbose: true
