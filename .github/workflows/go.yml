@@ -23,12 +23,9 @@ jobs:
           docker compose -f docker-compose.yml up -d
 
       - name: init test database
-        env:
-          OPENMLDB_NS_HOST: 127.0.0.1
-          OPENMLDB_NS_PORT: 6527
         run: |
-          echo "CREATE DATABASE test_db;" | ./openmldb/bin/openmldb --host=$OPENMLDB_NS_HOST --port=$OPENMLDB_NS_PORT
-          docker compose -f docker-compose.yml exec ?
+          docker compose -f docker-compose.yml exec openmldb-ns1 /opt/openmldb/bin/openmldb --zk_cluster=openmldb-zk:2181 --zk_root_path=/openmldb --role=sql_client --cmd 'CREATE DATABASE test_db'
+          docker compose -f docker-compose.yml exec openmldb-ns1 /opt/openmldb/bin/openmldb --zk_cluster=openmldb-zk:2181 --zk_root_path=/openmldb --role=sql_client --cmd 'SET GLOBAL execute_mode = "online"'
 
       - name: go test
         env:

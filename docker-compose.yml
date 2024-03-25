@@ -1,21 +1,6 @@
 version: "3.8"
 
 services:
-  testing:
-    build:
-      context: .
-      dockerfile: test.Dockerfile
-    volumes:
-      - ./:/usr/src/openmldb-exporter
-    command:
-      - bash
-      - -ce
-      - |
-        poetry install
-        poetry run pytest --junit-xml=./pytest.xml
-    depends_on:
-      - openmldb-api
-
   openmldb-api:
     image: ghcr.io/aceforeverd/openmldb-server:${OPENMLDB_VERSION}
     command:

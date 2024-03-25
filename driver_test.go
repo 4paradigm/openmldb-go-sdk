@@ -15,7 +15,7 @@ func Test_parseDsn(t *testing.T) {
 		mode queryMode
 		err  error
 	}{
-		{"openmldb://127.0.0.1:8080/test_db", "127.0.0.1:8080", "test_db", ModeOffsync, nil},
+		{"openmldb://127.0.0.1:8080/test_db", "127.0.0.1:8080", "test_db", ModeOnline, nil},
 		{"openmldb://127.0.0.1:8080/test_db?mode=online", "127.0.0.1:8080", "test_db", ModeOnline, nil},
 		{"openmldb://127.0.0.1:8080/test_db?mode=offasync", "127.0.0.1:8080", "test_db", ModeOffasync, nil},
 		{"openmldb://127.0.0.1:8080/test_db?mode=unknown", "127.0.0.1:8080", "test_db", "", errors.New("")},

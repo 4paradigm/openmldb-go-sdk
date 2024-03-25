@@ -34,7 +34,7 @@ func parseDsn(dsn string) (host string, db string, mode queryMode, err error) {
 
 	p := strings.Split(strings.TrimLeft(u.Path, "/"), "/")
 
-	mode = ModeOffsync
+	mode = ModeOnline
 	if u.Query().Has("mode") {
 		m := u.Query().Get("mode")
 		if _, ok := allQueryMode[m]; !ok {
