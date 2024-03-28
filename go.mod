@@ -1,4 +1,4 @@
-module github.com/4paradigm/OpenMLDB/go
+module github.com/4paradigm/openmldb-go-sdk
 
 go 1.18
 

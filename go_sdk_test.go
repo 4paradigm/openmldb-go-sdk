@@ -3,22 +3,21 @@ package openmldb_test
 import (
 	"context"
 	"database/sql"
+	"flag"
 	"fmt"
+	"log"
 	"os"
 	"testing"
 
 	// register openmldb driver
-	_ "github.com/4paradigm/OpenMLDB/go"
+	_ "github.com/4paradigm/openmldb-go-sdk"
 	"github.com/stretchr/testify/assert"
 )
 
-var (
-	OPENMLDB_APISERVER_HOST = os.Getenv("OPENMLDB_APISERVER_HOST")
-	OPENMLDB_APISERVER_PORT = os.Getenv("OPENMLDB_APISERVER_PORT")
-)
+var apiServer string
 
 func Test_driver(t *testing.T) {
-	db, err := sql.Open("openmldb", fmt.Sprintf("openmldb://%s:%s/test_db", OPENMLDB_APISERVER_HOST, OPENMLDB_APISERVER_PORT))
+	db, err := sql.Open("openmldb", fmt.Sprintf("openmldb://%s/test_db", apiServer))
 	if err != nil {
 		t.Errorf("fail to open connect: %s", err)
 	}
@@ -99,4 +98,15 @@ func Test_driver(t *testing.T) {
 			}{1, "bb"}, demo)
 		}
 	})
+}
+
+func TestMain(m *testing.M) {
+	flag.StringVar(&apiServer, "apiserver", "127.0.0.1:9527", "endpoint to apiserver")
+	flag.Parse()
+
+	if len(apiServer) == 0 {
+		log.Fatalf("non-empty api server address required")
+	}
+
+	os.Exit(m.Run())
 }
