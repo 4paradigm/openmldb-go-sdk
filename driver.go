@@ -9,10 +9,10 @@ import (
 	"strings"
 )
 
+
 func init() {
 	sql.Register("openmldb", &driver{})
 }
-
 var (
 	_ interfaces.Driver        = (*driver)(nil)
 	_ interfaces.DriverContext = (*driver)(nil)

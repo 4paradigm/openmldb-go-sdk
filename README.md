@@ -27,6 +27,8 @@ For example, to open a database to `test_db` by api server at `127.0.0.1:8080`:
 db, err := sql.Open("openmldb", "openmldb://127.0.0.1:8080/test_db")
 ```
 
+`<DB_NAME>` is mandatory in DSN, and at this time (version 0.2.0), you must ensure the database `<DB_NAME>` created before open go connection.
+
 ## Getting Start
 
 ```go

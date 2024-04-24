@@ -12,6 +12,7 @@ import (
 	"strings"
 )
 
+// compile time validation that our types implements the expected interfaces
 var (
 	_ interfaces.Conn = (*conn)(nil)
 
@@ -35,10 +36,8 @@ type queryMode string
 
 func (m queryMode) String() string {
 	switch m {
-	case ModeOffsync:
-		return "offsync"
-	case ModeOffasync:
-		return "offasync"
+	case ModeOffline:
+		return "offline"
 	case ModeOnline:
 		return "online"
 	default:
@@ -47,15 +46,14 @@ func (m queryMode) String() string {
 }
 
 const (
-	ModeOffsync  queryMode = "offsync"
-	ModeOffasync queryMode = "offasync"
-	ModeOnline   queryMode = "online"
+	ModeOffline queryMode = "offline"
+	ModeOnline  queryMode = "online"
+	// TODO(someone): "request"
 )
 
 var allQueryMode = map[string]queryMode{
-	"offsync":  ModeOffsync,
-	"offasync": ModeOffasync,
-	"online":   ModeOnline,
+	"offline": ModeOffline,
+	"online":  ModeOnline,
 }
 
 type conn struct {
@@ -81,7 +79,9 @@ type respDataRows struct {
 	i int
 }
 
-// Columns returns the names of the columns. The number of
+// Columns implements driver.Rows.
+//
+// Returns the names of the columns. The number of
 // columns of the result is inferred from the length of the
 // slice. If a particular column name isn't known, an empty
 // string should be returned for that entry.
@@ -89,13 +89,17 @@ func (r respDataRows) Columns() []string {
 	return make([]string, len(r.Schema))
 }
 
-// Close closes the rows iterator.
+// Close implements driver.Rows.
+//
+// closes the rows iterator.
 func (r *respDataRows) Close() error {
 	r.i = len(r.Data)
 	return nil
 }
 
-// Next is called to populate the next row of data into
+// Next implements driver.Rows.
+//
+// called to populate the next row of data into
 // the provided slice. The provided slice will be the same
 // size as the Columns() are wide.
 //
@@ -196,7 +200,7 @@ func parseRespFromJson(respBody io.Reader) (*queryResp, error) {
 	return &r, nil
 }
 
-func (c *conn) query(ctx context.Context, sql string, parameters ...interfaces.Value) (rows interfaces.Rows, err error) {
+func (c *conn) execute(ctx context.Context, sql string, parameters ...interfaces.Value) (rows interfaces.Rows, err error) {
 	if c.closed {
 		return nil, interfaces.ErrBadConn
 	}
@@ -206,6 +210,8 @@ func (c *conn) query(ctx context.Context, sql string, parameters ...interfaces.V
 		return nil, err
 	}
 
+	// POST endpoint/dbs/<db_name> is capable of all SQL, though it looks like
+	// a query API returns rows
 	req, err := http.NewRequestWithContext(
 		ctx,
 		"POST",
@@ -250,7 +256,7 @@ func (c *conn) Begin() (interfaces.Tx, error) {
 
 // Ping implements driver.Pinger.
 func (c *conn) Ping(ctx context.Context) error {
-	_, err := c.query(ctx, "SELECT 1")
+	_, err := c.execute(ctx, "SELECT 1")
 	return err
 }
 
@@ -274,7 +280,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []interfaces.
 	for i, arg := range args {
 		parameters[i] = arg.Value
 	}
-	if _, err := c.query(ctx, query, parameters...); err != nil {
+	if _, err := c.execute(ctx, query, parameters...); err != nil {
 		return nil, err
 	}
 	return interfaces.ResultNoRows, nil
@@ -286,5 +292,5 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []interfaces
 	for i, arg := range args {
 		parameters[i] = arg.Value
 	}
-	return c.query(ctx, query, parameters...)
+	return c.execute(ctx, query, parameters...)
 }
