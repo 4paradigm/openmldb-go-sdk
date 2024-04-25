@@ -3,7 +3,7 @@ package openmldb
 import (
 	"bytes"
 	"context"
-	interfaces "database/sql/driver"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,22 +15,22 @@ import (
 
 // compile time validation that our types implements the expected interfaces
 var (
-	_ interfaces.Conn = (*conn)(nil)
+	_ driver.Conn = (*conn)(nil)
 
 	// All Conn implementations should implement the following interfaces:
 	// Pinger, SessionResetter, and Validator.
 
-	_ interfaces.Pinger          = (*conn)(nil)
-	_ interfaces.SessionResetter = (*conn)(nil)
-	_ interfaces.Validator       = (*conn)(nil)
+	_ driver.Pinger          = (*conn)(nil)
+	_ driver.SessionResetter = (*conn)(nil)
+	_ driver.Validator       = (*conn)(nil)
 
 	// If named parameters or context are supported, the driver's Conn should implement:
 	// ExecerContext, QueryerContext, ConnPrepareContext, and ConnBeginTx.
 
-	_ interfaces.ExecerContext  = (*conn)(nil)
-	_ interfaces.QueryerContext = (*conn)(nil)
+	_ driver.ExecerContext  = (*conn)(nil)
+	_ driver.QueryerContext = (*conn)(nil)
 
-	_ interfaces.Rows = (*respDataRows)(nil)
+	_ driver.Rows = (*respDataRows)(nil)
 )
 
 type queryMode string
@@ -72,7 +72,7 @@ type queryResp struct {
 
 type respData struct {
 	Schema []string             `json:"schema"`
-	Data   [][]interfaces.Value `json:"data"`
+	Data   [][]driver.Value `json:"data"`
 }
 
 type respDataRows struct {
@@ -110,7 +110,7 @@ func (r *respDataRows) Close() error {
 // The dest should not be written to outside of Next. Care
 // should be taken when closing Rows not to modify
 // a buffer held in dest.
-func (r *respDataRows) Next(dest []interfaces.Value) error {
+func (r *respDataRows) Next(dest []driver.Value) error {
 	if r.i >= len(r.Data) {
 		return io.EOF
 	}
@@ -128,10 +128,10 @@ type queryReq struct {
 
 type queryInput struct {
 	Schema []string           `json:"schema"`
-	Data   []interfaces.Value `json:"data"`
+	Data   []driver.Value `json:"data"`
 }
 
-func marshalQueryRequest(mode, sql string, input ...interfaces.Value) ([]byte, error) {
+func marshalQueryRequest(mode, sql string, input ...driver.Value) ([]byte, error) {
 	req := queryReq{
 		Mode: mode,
 		SQL:  sql,
@@ -214,9 +214,9 @@ func unmarshalQueryResponse(respBody io.Reader) (*queryResp, error) {
 	return &r, nil
 }
 
-func (c *conn) execute(ctx context.Context, sql string, parameters ...interfaces.Value) (rows interfaces.Rows, err error) {
+func (c *conn) execute(ctx context.Context, sql string, parameters ...driver.Value) (rows driver.Rows, err error) {
 	if c.closed {
-		return nil, interfaces.ErrBadConn
+		return nil, driver.ErrBadConn
 	}
 
 	reqBody, err := marshalQueryRequest(string(c.mode), sql, parameters...)
@@ -253,7 +253,7 @@ func (c *conn) execute(ctx context.Context, sql string, parameters ...interfaces
 }
 
 // Prepare implements driver.Conn.
-func (c *conn) Prepare(query string) (interfaces.Stmt, error) {
+func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	return nil, errors.New("Prepare is not implemented, use QueryContext instead")
 }
 
@@ -264,7 +264,7 @@ func (c *conn) Close() error {
 }
 
 // Begin implements driver.Conn.
-func (c *conn) Begin() (interfaces.Tx, error) {
+func (c *conn) Begin() (driver.Tx, error) {
 	return nil, errors.New("begin not implemented")
 }
 
@@ -289,20 +289,20 @@ func (c *conn) IsValid() bool {
 }
 
 // ExecContext implements driver.ExecerContext.
-func (c *conn) ExecContext(ctx context.Context, query string, args []interfaces.NamedValue) (interfaces.Result, error) {
-	parameters := make([]interfaces.Value, len(args))
+func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	parameters := make([]driver.Value, len(args))
 	for i, arg := range args {
 		parameters[i] = arg.Value
 	}
 	if _, err := c.execute(ctx, query, parameters...); err != nil {
 		return nil, err
 	}
-	return interfaces.ResultNoRows, nil
+	return driver.ResultNoRows, nil
 }
 
 // QueryContext implements driver.QueryerContext.
-func (c *conn) QueryContext(ctx context.Context, query string, args []interfaces.NamedValue) (interfaces.Rows, error) {
-	parameters := make([]interfaces.Value, len(args))
+func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	parameters := make([]driver.Value, len(args))
 	for i, arg := range args {
 		parameters[i] = arg.Value
 	}

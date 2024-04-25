@@ -18,6 +18,9 @@ import (
 
 var apiServer string
 
+// 1. NullTime + NullDate
+// 2. Time + Time
+
 func Test_driver(t *testing.T) {
 	db, err := sql.Open("openmldb", fmt.Sprintf("openmldb://%s/test_db", apiServer))
 	if err != nil {

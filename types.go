@@ -9,6 +9,7 @@ import (
 
 var (
 	_ sql.Scanner = (*NullDate)(nil)
+	_ driver.Valuer = NullDate{}
 )
 
 type NullDate struct {
@@ -38,7 +39,7 @@ func (dt *NullDate) Scan(src any) error {
 
 }
 
-// Value implements driver.Value for NullDate
+// Value implements driver.Valuer for NullDate
 func (dt NullDate) Value() (driver.Value, error) {
 	if !dt.Valid {
 		return nil, nil
