@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // compile time validation that our types implements the expected interfaces
@@ -86,6 +87,7 @@ type respDataRows struct {
 // slice. If a particular column name isn't known, an empty
 // string should be returned for that entry.
 func (r respDataRows) Columns() []string {
+	// FIXME(someone): current impl returns schema list, not name of columns
 	return make([]string, len(r.Schema))
 }
 
@@ -129,7 +131,7 @@ type queryInput struct {
 	Data   []interfaces.Value `json:"data"`
 }
 
-func parseReqToJson(mode, sql string, input ...interfaces.Value) ([]byte, error) {
+func marshalQueryRequest(mode, sql string, input ...interfaces.Value) ([]byte, error) {
 	req := queryReq{
 		Mode: mode,
 		SQL:  sql,
@@ -153,6 +155,10 @@ func parseReqToJson(mode, sql string, input ...interfaces.Value) ([]byte, error)
 				schema[i] = "double"
 			case string:
 				schema[i] = "string"
+			case time.Time:
+				schema[i] = "timestamp"
+			case NullDate:
+				schema[i] = "date"
 			default:
 				return nil, fmt.Errorf("unknown type at index %d", i)
 			}
@@ -166,7 +172,7 @@ func parseReqToJson(mode, sql string, input ...interfaces.Value) ([]byte, error)
 	return json.Marshal(req)
 }
 
-func parseRespFromJson(respBody io.Reader) (*queryResp, error) {
+func unmarshalQueryResponse(respBody io.Reader) (*queryResp, error) {
 	var r queryResp
 	if err := json.NewDecoder(respBody).Decode(&r); err != nil {
 		return nil, err
@@ -190,6 +196,14 @@ func parseRespFromJson(respBody io.Reader) (*queryResp, error) {
 					row[i] = float64(col.(float64))
 				case "string":
 					row[i] = col.(string)
+				case "timestamp":
+					// timestamp value returned as int64 millisecond unix epoch time
+					row[i] = time.UnixMilli(int64(col.(float64)))
+				case "date":
+					// date values returned as "YYYY-mm-dd" formated string
+					var nullDate NullDate
+					nullDate.Scan(col.(string))
+					row[i] = nullDate
 				default:
 					return nil, fmt.Errorf("unknown type %s at index %d", r.Data.Schema[i], i)
 				}
@@ -205,7 +219,7 @@ func (c *conn) execute(ctx context.Context, sql string, parameters ...interfaces
 		return nil, interfaces.ErrBadConn
 	}
 
-	reqBody, err := parseReqToJson(string(c.mode), sql, parameters...)
+	reqBody, err := marshalQueryRequest(string(c.mode), sql, parameters...)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +241,7 @@ func (c *conn) execute(ctx context.Context, sql string, parameters ...interfaces
 		return nil, err
 	}
 
-	if r, err := parseRespFromJson(resp.Body); err != nil {
+	if r, err := unmarshalQueryResponse(resp.Body); err != nil {
 		return nil, err
 	} else if r.Code != 0 {
 		return nil, fmt.Errorf("conn error: %s", r.Msg)

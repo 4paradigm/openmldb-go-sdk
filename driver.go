@@ -9,18 +9,19 @@ import (
 	"strings"
 )
 
-
 func init() {
-	sql.Register("openmldb", &driver{})
+	sql.Register("openmldb", &openmldbDriver{})
 }
-var (
-	_ interfaces.Driver        = (*driver)(nil)
-	_ interfaces.DriverContext = (*driver)(nil)
 
-	_ interfaces.Connector = (*connecter)(nil)
+// compile time validation that our types implements the expected interfaces
+var (
+	_ interfaces.Driver        = openmldbDriver{}
+	_ interfaces.DriverContext = openmldbDriver{}
+
+	_ interfaces.Connector = connecter{}
 )
 
-type driver struct{}
+type openmldbDriver struct{}
 
 func parseDsn(dsn string) (host string, db string, mode queryMode, err error) {
 	u, err := url.Parse(dsn)
@@ -51,7 +52,7 @@ func parseDsn(dsn string) (host string, db string, mode queryMode, err error) {
 }
 
 // Open implements driver.Driver.
-func (driver) Open(name string) (interfaces.Conn, error) {
+func (openmldbDriver) Open(name string) (interfaces.Conn, error) {
 	// name should be the URL of the api server, e.g. openmldb://localhost:6543/db
 	host, db, mode, err := parseDsn(name)
 	if err != nil {
@@ -59,6 +60,16 @@ func (driver) Open(name string) (interfaces.Conn, error) {
 	}
 
 	return &conn{host: host, db: db, mode: mode, closed: false}, nil
+}
+
+// OpenConnector implements driver.DriverContext.
+func (openmldbDriver) OpenConnector(name string) (interfaces.Connector, error) {
+	host, db, mode, err := parseDsn(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &connecter{host, db, mode}, nil
 }
 
 type connecter struct {
@@ -78,15 +89,5 @@ func (c connecter) Connect(ctx context.Context) (interfaces.Conn, error) {
 
 // Driver implements driver.Connector.
 func (connecter) Driver() interfaces.Driver {
-	return &driver{}
-}
-
-// OpenConnector implements driver.DriverContext.
-func (driver) OpenConnector(name string) (interfaces.Connector, error) {
-	host, db, mode, err := parseDsn(name)
-	if err != nil {
-		return nil, err
-	}
-
-	return &connecter{host, db, mode}, nil
+	return &openmldbDriver{}
 }

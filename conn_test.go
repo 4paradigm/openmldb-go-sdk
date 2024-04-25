@@ -38,7 +38,7 @@ func TestParseReqToJson(t *testing.T) {
 			}`,
 		},
 	} {
-		actual, err := parseReqToJson(tc.mode, tc.sql, tc.input...)
+		actual, err := marshalQueryRequest(tc.mode, tc.sql, tc.input...)
 		assert.NoError(t, err)
 		assert.JSONEq(t, tc.expect, string(actual))
 	}
@@ -102,7 +102,7 @@ func TestParseRespFromJson(t *testing.T) {
 			},
 		},
 	} {
-		actual, err := parseRespFromJson(strings.NewReader(tc.resp))
+		actual, err := unmarshalQueryResponse(strings.NewReader(tc.resp))
 		assert.NoError(t, err)
 		assert.Equal(t, &tc.expect, actual)
 	}
