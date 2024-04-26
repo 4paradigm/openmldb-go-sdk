@@ -3,6 +3,7 @@ package openmldb
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -71,7 +72,7 @@ type queryResp struct {
 }
 
 type respData struct {
-	Schema []string             `json:"schema"`
+	Schema []string         `json:"schema"`
 	Data   [][]driver.Value `json:"data"`
 }
 
@@ -127,35 +128,47 @@ type queryReq struct {
 }
 
 type queryInput struct {
-	Schema []string           `json:"schema"`
+	Schema []string       `json:"schema"`
 	Data   []driver.Value `json:"data"`
 }
 
-func marshalQueryRequest(mode, sql string, input ...driver.Value) ([]byte, error) {
+func marshalQueryRequest(mode string, sqlStr string, input ...driver.Value) ([]byte, error) {
 	req := queryReq{
 		Mode: mode,
-		SQL:  sql,
+		SQL:  sqlStr,
 	}
+
+	// TODO(someone): Type infer from input slice does not work always. Consider those cases:
+	// 1. a int type can be a int32 or int64, depends on value size.
+	// 2. we're not covering more input types like uint.
+	// 3. For a int16 or int32 input from DB.Query(...), it always convert to int64 because driver.Value
+	//    only expect int64 from primitive types.
+	//
+	// A better approach is to ask the schema types from api server, which in turn ask types info to SQL compiler.
 
 	if len(input) > 0 {
 		schema := make([]string, len(input))
+		// TODO(someone): support value as nil, at current time it is not possible to infer SQL type from a nil
 		for i, v := range input {
-			switch v.(type) {
-			case bool:
+			switch vv := v.(type) {
+			case bool, Null[bool]:
 				schema[i] = "bool"
-			case int16:
+			case int16, Null[int16]:
 				schema[i] = "int16"
-			case int32:
+			case int32, Null[int32]:
 				schema[i] = "int32"
-			case int64:
+			case int64, Null[int64]:
 				schema[i] = "int64"
-			case float32:
+			case float32, Null[float32]:
 				schema[i] = "float"
-			case float64:
+			case float64, Null[float64]:
 				schema[i] = "double"
-			case string:
+			case string, Null[string]:
 				schema[i] = "string"
 			case time.Time:
+				schema[i] = "timestamp"
+				input[i] = Null[time.Time]{Null: sql.Null[time.Time]{V: vv, Valid: true}}
+			case Null[time.Time]:
 				schema[i] = "timestamp"
 			case NullDate:
 				schema[i] = "date"
@@ -179,8 +192,14 @@ func unmarshalQueryResponse(respBody io.Reader) (*queryResp, error) {
 	}
 
 	if r.Data != nil {
+		// queryResp.Data may nil for DDL
 		for _, row := range r.Data.Data {
 			for i, col := range row {
+				if col == nil {
+					row[i] = nil
+					continue
+				}
+
 				switch strings.ToLower(r.Data.Schema[i]) {
 				case "bool":
 					row[i] = col.(bool)
@@ -196,14 +215,17 @@ func unmarshalQueryResponse(respBody io.Reader) (*queryResp, error) {
 					row[i] = float64(col.(float64))
 				case "string":
 					row[i] = col.(string)
+				// date and timestamp values saved internally as time.Time
 				case "timestamp":
 					// timestamp value returned as int64 millisecond unix epoch time
 					row[i] = time.UnixMilli(int64(col.(float64)))
 				case "date":
-					// date values returned as "YYYY-mm-dd" formated string
-					var nullDate NullDate
-					nullDate.Scan(col.(string))
-					row[i] = nullDate
+					t, err := parseDateStr(col.(string))
+					if err != nil {
+						row[i] = nil
+					}
+
+					row[i] = t
 				default:
 					return nil, fmt.Errorf("unknown type %s at index %d", r.Data.Schema[i], i)
 				}
@@ -244,7 +266,7 @@ func (c *conn) execute(ctx context.Context, sql string, parameters ...driver.Val
 	if r, err := unmarshalQueryResponse(resp.Body); err != nil {
 		return nil, err
 	} else if r.Code != 0 {
-		return nil, fmt.Errorf("conn error: %s", r.Msg)
+		return nil, fmt.Errorf("execute error: %s", r.Msg)
 	} else if r.Data != nil {
 		return &respDataRows{*r.Data, 0}, nil
 	}

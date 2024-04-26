@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '^1.18'
+          go-version: '^1.22'
 
       - name: OpenMLDB cluster
         run: |
@@ -33,7 +33,7 @@ jobs:
           docker compose -f docker-compose.yml exec openmldb-ns1 /opt/openmldb/bin/openmldb --zk_cluster=openmldb-zk:2181 --zk_root_path=/openmldb --role=sql_client --cmd 'SET GLOBAL execute_mode = "online"'
 
       - name: go test
-        run: go test ./... -race -covermode=atomic -coverprofile=coverage.out
+        run: go test ./... -race -covermode=atomic -coverprofile=coverage.out -v
 
       - name: Coverage
         uses: codecov/codecov-action@v4
