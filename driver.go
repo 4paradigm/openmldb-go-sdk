@@ -3,24 +3,25 @@ package openmldb
 import (
 	"context"
 	"database/sql"
-	interfaces "database/sql/driver"
+	"database/sql/driver"
 	"fmt"
 	"net/url"
 	"strings"
 )
 
 func init() {
-	sql.Register("openmldb", &driver{})
+	sql.Register("openmldb", &openmldbDriver{})
 }
 
+// compile time validation that our types implements the expected interfaces
 var (
-	_ interfaces.Driver        = (*driver)(nil)
-	_ interfaces.DriverContext = (*driver)(nil)
+	_ driver.Driver        = openmldbDriver{}
+	_ driver.DriverContext = openmldbDriver{}
 
-	_ interfaces.Connector = (*connecter)(nil)
+	_ driver.Connector = connecter{}
 )
 
-type driver struct{}
+type openmldbDriver struct{}
 
 func parseDsn(dsn string) (host string, db string, mode queryMode, err error) {
 	u, err := url.Parse(dsn)
@@ -51,7 +52,7 @@ func parseDsn(dsn string) (host string, db string, mode queryMode, err error) {
 }
 
 // Open implements driver.Driver.
-func (driver) Open(name string) (interfaces.Conn, error) {
+func (openmldbDriver) Open(name string) (driver.Conn, error) {
 	// name should be the URL of the api server, e.g. openmldb://localhost:6543/db
 	host, db, mode, err := parseDsn(name)
 	if err != nil {
@@ -61,6 +62,16 @@ func (driver) Open(name string) (interfaces.Conn, error) {
 	return &conn{host: host, db: db, mode: mode, closed: false}, nil
 }
 
+// OpenConnector implements driver.DriverContext.
+func (openmldbDriver) OpenConnector(name string) (driver.Connector, error) {
+	host, db, mode, err := parseDsn(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &connecter{host, db, mode}, nil
+}
+
 type connecter struct {
 	host string
 	db   string
@@ -68,7 +79,7 @@ type connecter struct {
 }
 
 // Connect implements driver.Connector.
-func (c connecter) Connect(ctx context.Context) (interfaces.Conn, error) {
+func (c connecter) Connect(ctx context.Context) (driver.Conn, error) {
 	conn := &conn{host: c.host, db: c.db, mode: c.mode, closed: false}
 	if err := conn.Ping(ctx); err != nil {
 		return nil, err
@@ -77,16 +88,6 @@ func (c connecter) Connect(ctx context.Context) (interfaces.Conn, error) {
 }
 
 // Driver implements driver.Connector.
-func (connecter) Driver() interfaces.Driver {
-	return &driver{}
-}
-
-// OpenConnector implements driver.DriverContext.
-func (driver) OpenConnector(name string) (interfaces.Connector, error) {
-	host, db, mode, err := parseDsn(name)
-	if err != nil {
-		return nil, err
-	}
-
-	return &connecter{host, db, mode}, nil
+func (connecter) Driver() driver.Driver {
+	return &openmldbDriver{}
 }

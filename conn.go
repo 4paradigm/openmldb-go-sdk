@@ -3,42 +3,42 @@ package openmldb
 import (
 	"bytes"
 	"context"
-	interfaces "database/sql/driver"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
+// compile time validation that our types implements the expected interfaces
 var (
-	_ interfaces.Conn = (*conn)(nil)
+	_ driver.Conn = (*conn)(nil)
 
 	// All Conn implementations should implement the following interfaces:
 	// Pinger, SessionResetter, and Validator.
 
-	_ interfaces.Pinger          = (*conn)(nil)
-	_ interfaces.SessionResetter = (*conn)(nil)
-	_ interfaces.Validator       = (*conn)(nil)
+	_ driver.Pinger          = (*conn)(nil)
+	_ driver.SessionResetter = (*conn)(nil)
+	_ driver.Validator       = (*conn)(nil)
 
 	// If named parameters or context are supported, the driver's Conn should implement:
 	// ExecerContext, QueryerContext, ConnPrepareContext, and ConnBeginTx.
 
-	_ interfaces.ExecerContext  = (*conn)(nil)
-	_ interfaces.QueryerContext = (*conn)(nil)
+	_ driver.ExecerContext  = (*conn)(nil)
+	_ driver.QueryerContext = (*conn)(nil)
 
-	_ interfaces.Rows = (*respDataRows)(nil)
+	_ driver.Rows = (*respDataRows)(nil)
 )
 
 type queryMode string
 
 func (m queryMode) String() string {
 	switch m {
-	case ModeOffsync:
-		return "offsync"
-	case ModeOffasync:
-		return "offasync"
+	case ModeOffline:
+		return "offline"
 	case ModeOnline:
 		return "online"
 	default:
@@ -47,15 +47,14 @@ func (m queryMode) String() string {
 }
 
 const (
-	ModeOffsync  queryMode = "offsync"
-	ModeOffasync queryMode = "offasync"
-	ModeOnline   queryMode = "online"
+	ModeOffline queryMode = "offline"
+	ModeOnline  queryMode = "online"
+	// TODO(someone): "request"
 )
 
 var allQueryMode = map[string]queryMode{
-	"offsync":  ModeOffsync,
-	"offasync": ModeOffasync,
-	"online":   ModeOnline,
+	"offline": ModeOffline,
+	"online":  ModeOnline,
 }
 
 type conn struct {
@@ -73,7 +72,7 @@ type queryResp struct {
 
 type respData struct {
 	Schema []string             `json:"schema"`
-	Data   [][]interfaces.Value `json:"data"`
+	Data   [][]driver.Value `json:"data"`
 }
 
 type respDataRows struct {
@@ -81,21 +80,28 @@ type respDataRows struct {
 	i int
 }
 
-// Columns returns the names of the columns. The number of
+// Columns implements driver.Rows.
+//
+// Returns the names of the columns. The number of
 // columns of the result is inferred from the length of the
 // slice. If a particular column name isn't known, an empty
 // string should be returned for that entry.
 func (r respDataRows) Columns() []string {
+	// FIXME(someone): current impl returns schema list, not name of columns
 	return make([]string, len(r.Schema))
 }
 
-// Close closes the rows iterator.
+// Close implements driver.Rows.
+//
+// closes the rows iterator.
 func (r *respDataRows) Close() error {
 	r.i = len(r.Data)
 	return nil
 }
 
-// Next is called to populate the next row of data into
+// Next implements driver.Rows.
+//
+// called to populate the next row of data into
 // the provided slice. The provided slice will be the same
 // size as the Columns() are wide.
 //
@@ -104,7 +110,7 @@ func (r *respDataRows) Close() error {
 // The dest should not be written to outside of Next. Care
 // should be taken when closing Rows not to modify
 // a buffer held in dest.
-func (r *respDataRows) Next(dest []interfaces.Value) error {
+func (r *respDataRows) Next(dest []driver.Value) error {
 	if r.i >= len(r.Data) {
 		return io.EOF
 	}
@@ -122,10 +128,10 @@ type queryReq struct {
 
 type queryInput struct {
 	Schema []string           `json:"schema"`
-	Data   []interfaces.Value `json:"data"`
+	Data   []driver.Value `json:"data"`
 }
 
-func parseReqToJson(mode, sql string, input ...interfaces.Value) ([]byte, error) {
+func marshalQueryRequest(mode, sql string, input ...driver.Value) ([]byte, error) {
 	req := queryReq{
 		Mode: mode,
 		SQL:  sql,
@@ -149,6 +155,10 @@ func parseReqToJson(mode, sql string, input ...interfaces.Value) ([]byte, error)
 				schema[i] = "double"
 			case string:
 				schema[i] = "string"
+			case time.Time:
+				schema[i] = "timestamp"
+			case NullDate:
+				schema[i] = "date"
 			default:
 				return nil, fmt.Errorf("unknown type at index %d", i)
 			}
@@ -162,7 +172,7 @@ func parseReqToJson(mode, sql string, input ...interfaces.Value) ([]byte, error)
 	return json.Marshal(req)
 }
 
-func parseRespFromJson(respBody io.Reader) (*queryResp, error) {
+func unmarshalQueryResponse(respBody io.Reader) (*queryResp, error) {
 	var r queryResp
 	if err := json.NewDecoder(respBody).Decode(&r); err != nil {
 		return nil, err
@@ -186,6 +196,14 @@ func parseRespFromJson(respBody io.Reader) (*queryResp, error) {
 					row[i] = float64(col.(float64))
 				case "string":
 					row[i] = col.(string)
+				case "timestamp":
+					// timestamp value returned as int64 millisecond unix epoch time
+					row[i] = time.UnixMilli(int64(col.(float64)))
+				case "date":
+					// date values returned as "YYYY-mm-dd" formated string
+					var nullDate NullDate
+					nullDate.Scan(col.(string))
+					row[i] = nullDate
 				default:
 					return nil, fmt.Errorf("unknown type %s at index %d", r.Data.Schema[i], i)
 				}
@@ -196,16 +214,18 @@ func parseRespFromJson(respBody io.Reader) (*queryResp, error) {
 	return &r, nil
 }
 
-func (c *conn) query(ctx context.Context, sql string, parameters ...interfaces.Value) (rows interfaces.Rows, err error) {
+func (c *conn) execute(ctx context.Context, sql string, parameters ...driver.Value) (rows driver.Rows, err error) {
 	if c.closed {
-		return nil, interfaces.ErrBadConn
+		return nil, driver.ErrBadConn
 	}
 
-	reqBody, err := parseReqToJson(string(c.mode), sql, parameters...)
+	reqBody, err := marshalQueryRequest(string(c.mode), sql, parameters...)
 	if err != nil {
 		return nil, err
 	}
 
+	// POST endpoint/dbs/<db_name> is capable of all SQL, though it looks like
+	// a query API returns rows
 	req, err := http.NewRequestWithContext(
 		ctx,
 		"POST",
@@ -221,7 +241,7 @@ func (c *conn) query(ctx context.Context, sql string, parameters ...interfaces.V
 		return nil, err
 	}
 
-	if r, err := parseRespFromJson(resp.Body); err != nil {
+	if r, err := unmarshalQueryResponse(resp.Body); err != nil {
 		return nil, err
 	} else if r.Code != 0 {
 		return nil, fmt.Errorf("conn error: %s", r.Msg)
@@ -233,7 +253,7 @@ func (c *conn) query(ctx context.Context, sql string, parameters ...interfaces.V
 }
 
 // Prepare implements driver.Conn.
-func (c *conn) Prepare(query string) (interfaces.Stmt, error) {
+func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	return nil, errors.New("Prepare is not implemented, use QueryContext instead")
 }
 
@@ -244,13 +264,13 @@ func (c *conn) Close() error {
 }
 
 // Begin implements driver.Conn.
-func (c *conn) Begin() (interfaces.Tx, error) {
+func (c *conn) Begin() (driver.Tx, error) {
 	return nil, errors.New("begin not implemented")
 }
 
 // Ping implements driver.Pinger.
 func (c *conn) Ping(ctx context.Context) error {
-	_, err := c.query(ctx, "SELECT 1")
+	_, err := c.execute(ctx, "SELECT 1")
 	return err
 }
 
@@ -269,22 +289,22 @@ func (c *conn) IsValid() bool {
 }
 
 // ExecContext implements driver.ExecerContext.
-func (c *conn) ExecContext(ctx context.Context, query string, args []interfaces.NamedValue) (interfaces.Result, error) {
-	parameters := make([]interfaces.Value, len(args))
+func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	parameters := make([]driver.Value, len(args))
 	for i, arg := range args {
 		parameters[i] = arg.Value
 	}
-	if _, err := c.query(ctx, query, parameters...); err != nil {
+	if _, err := c.execute(ctx, query, parameters...); err != nil {
 		return nil, err
 	}
-	return interfaces.ResultNoRows, nil
+	return driver.ResultNoRows, nil
 }
 
 // QueryContext implements driver.QueryerContext.
-func (c *conn) QueryContext(ctx context.Context, query string, args []interfaces.NamedValue) (interfaces.Rows, error) {
-	parameters := make([]interfaces.Value, len(args))
+func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	parameters := make([]driver.Value, len(args))
 	for i, arg := range args {
 		parameters[i] = arg.Value
 	}
-	return c.query(ctx, query, parameters...)
+	return c.execute(ctx, query, parameters...)
 }
