@@ -19,7 +19,7 @@ go get github.com/4paradigm/openmldb-go-sdk
 ## Data Source Name (DSN)
 
 ```
-openmldb://<API_SERVER_HOST>:<API_SERVER_PORT>/<DB_NAME>
+openmldb://<API_SERVER_HOST>:<API_SERVER_PORT>/<DB_NAME>?mode=<MODE_NAME>
 ```
 
 For example, to open a database to `test_db` by api server at `127.0.0.1:8080`:
@@ -28,6 +28,16 @@ db, err := sql.Open("openmldb", "openmldb://127.0.0.1:8080/test_db")
 ```
 
 `<DB_NAME>` is mandatory in DSN, and at this time (version 0.2.0), you must ensure the database `<DB_NAME>` created before open go connection.
+DSN parameters (the `?mode=<MODE_NAME>` part) are optional.
+
+
+### Query Mode (Optional)
+
+The execution mode for OpenMLDB, defined as `mode=<MODE_NAME>`, default to `online`, available values are:
+- `online`: online preview mode
+- `offsync`: offline mode with system variable `sync_job = true`
+- `offasync`: offline mode with system variable `sync_job = false`
+
 
 ## Getting Start
 
