@@ -38,24 +38,26 @@ type queryMode string
 
 func (m queryMode) String() string {
 	switch m {
-	case ModeOffline:
-		return "offline"
-	case ModeOnline:
-		return "online"
+	case ModeOffsync:
+		return "offsync"
+	case ModeOffasync:
+		return "offasync"
 	default:
 		return "unknown"
 	}
 }
 
 const (
-	ModeOffline queryMode = "offline"
-	ModeOnline  queryMode = "online"
+	ModeOffsync  queryMode = "offsync"
+	ModeOffasync queryMode = "offasync"
+	ModeOnline   queryMode = "online"
 	// TODO(someone): "request"
 )
 
 var allQueryMode = map[string]queryMode{
-	"offline": ModeOffline,
-	"online":  ModeOnline,
+	"offsync":  ModeOffsync,
+	"offasync": ModeOffasync,
+	"online":   ModeOnline,
 }
 
 type conn struct {
