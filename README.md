@@ -1,6 +1,12 @@
 OpenMLDB Go SDK
 ------
 
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/4paradigm/openmldb-go-sdk)
+[![GitHub Release](https://img.shields.io/github/v/release/4paradigm/openmldb-go-sdk)](https://github.com/4paradigm/openmldb-go-sdk/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/4paradigm/openmldb-go-sdk)](https://goreportcard.com/report/github.com/4paradigm/openmldb-go-sdk)
+[![Go Reference](https://pkg.go.dev/badge/github.com/4paradigm/openmldb-go-sdk.svg)](https://pkg.go.dev/github.com/4paradigm/openmldb-go-sdk)
+[![Codecov](https://img.shields.io/codecov/c/github/4paradigm/openmldb-go-sdk)](https://codecov.io/gh/4paradigm/openmldb-go-sdk)
+
 Pure Go [OpenMLDB](https://github.com/4paradigm/OpenMLDB) driver for database/sql, connect via HTTP.
 
 ## Features
